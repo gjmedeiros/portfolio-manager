@@ -12,6 +12,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 
 @Repository
 public interface ProjectRepository extends JpaRepository<Project, Long>, JpaSpecificationExecutor<Project> {
@@ -21,7 +22,7 @@ public interface ProjectRepository extends JpaRepository<Project, Long>, JpaSpec
 		@Query("""
 				SELECT p FROM Project p
 				WHERE (:status IS NULL OR p.status = :status)
-				  AND (:name IS NULL OR p.name ILIKE :name)
+				  AND (:name IS NULL OR LOWER(p.name) LIKE LOWER(CAST(:name AS string)))
 				  AND (:startDateFrom IS NULL OR p.startDate >= :startDateFrom)
 				  AND (:startDateTo IS NULL OR p.startDate <= :startDateTo)
 				""")
@@ -53,7 +54,7 @@ public interface ProjectRepository extends JpaRepository<Project, Long>, JpaSpec
 				""")
 		long countActiveProjectsByMemberId(
 				@Param("memberId") Long memberId,
-				@Param("excludedStatuses") List<ProjectStatus> excludedStatuses
+				@Param("excludedStatuses") Set<ProjectStatus> excludedStatuses
 		);
 
 		@Query("SELECT p FROM Project p JOIN p.memberIds memberId WHERE memberId = :memberId")

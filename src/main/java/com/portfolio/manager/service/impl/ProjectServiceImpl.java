@@ -12,6 +12,7 @@ import com.portfolio.manager.entity.Project;
 import com.portfolio.manager.enums.MemberRole;
 import com.portfolio.manager.enums.ProjectStatus;
 import com.portfolio.manager.exception.BusinessException;
+import com.portfolio.manager.exception.InvalidRequestException;
 import com.portfolio.manager.exception.InvalidStatusTransitionException;
 import com.portfolio.manager.exception.ResourceNotFoundException;
 import com.portfolio.manager.mapper.ProjectMapper;
@@ -28,6 +29,7 @@ import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -39,8 +41,9 @@ public class ProjectServiceImpl implements ProjectService {
 		private static final int MIN_MEMBERS_PER_PROJECT = 1;
 		private static final int MAX_ACTIVE_PROJECTS_PER_MEMBER = 3;
 
-		private static final List<ProjectStatus> EXCLUDED_FROM_MEMBER_LIMIT =
-				List.of(ProjectStatus.ENCERRADO, ProjectStatus.CANCELADO);
+		private static final Set<ProjectStatus> INACTIVE_STATUSES = Set.of(
+				ProjectStatus.ENCERRADO, ProjectStatus.CANCELADO
+		);
 
 		private final ProjectRepository projectRepository;
 		private final ProjectMapper projectMapper;
@@ -72,17 +75,9 @@ public class ProjectServiceImpl implements ProjectService {
 		public Page<ProjectResponse> listProjects(ProjectFilterRequest filter, Pageable pageable) {
 				log.debug("Listar projetos com filtros: {}", filter);
 
-				String name = filter.getName();
-
-				if (name != null && !name.isBlank()) {
-						name = "%" + name + "%";
-				} else {
-						name = null;
-				}
-
 				return projectRepository.findWithFilters(
 						filter.getStatus(),
-						name,
+						toLikePattern(filter.getName()),
 						filter.getStartDateFrom(),
 						filter.getStartDateTo(),
 						pageable
@@ -106,7 +101,7 @@ public class ProjectServiceImpl implements ProjectService {
 
 		@Override
 		public ProjectResponse updateProjectStatus(Long id, ProjectStatusUpdateRequest request) {
-				log.info("Atualizando o status do projeto com ID {} \u200B\u200Bpara {}", id, request.getNewStatus());
+				log.info("Atualizando o status do projeto com ID {} para {}", id, request.getNewStatus());
 
 				Project project = findProjectOrThrow(id);
 				ProjectStatus currentStatus = project.getStatus();
@@ -130,11 +125,11 @@ public class ProjectServiceImpl implements ProjectService {
 				Project project = findProjectOrThrow(id);
 
 				if (!project.getStatus().isDeletable()) {
-						throw new BusinessException(
-								"Projeto com status '" + project.getStatus().getDisplayName() +
-										"' não pode ser excluído. Apenas projetos nos status: " +
-										"em análise, análise realizada, análise aprovada, planejado, cancelado podem ser excluídos."
-						);
+
+						throw new BusinessException(String.format(
+								"Projeto com status '%s' não pode ser excluído. " +
+										"Apenas projetos nos status: em análise, análise realizada, análise aprovada, planejado, cancelado podem ser excluídos",
+								project.getStatus().getDisplayName()));
 				}
 
 				projectRepository.delete(project);
@@ -146,37 +141,13 @@ public class ProjectServiceImpl implements ProjectService {
 				log.info("Adicionando o ID do membro {} ao ID do projeto {}", memberId, projectId);
 
 				Project project = findProjectOrThrow(projectId);
+				MemberResponse member = findMemberOrThrow(memberId);
 
-				if (project.getMemberIds().contains(memberId)) {
-						throw new BusinessException("Membro com ID " + memberId + " já está alocado neste projeto.");
-				}
-
-				if (project.getMemberIds().size() >= MAX_MEMBERS_PER_PROJECT) {
-						throw new BusinessException(
-								"Projeto já atingiu o limite máximo de " + MAX_MEMBERS_PER_PROJECT + " membros."
-						);
-				}
-
-				MemberResponse member = memberApiClient.findMemberById(memberId)
-						.orElseThrow(() -> new ResourceNotFoundException("Membro", memberId));
-
-				if (member.getRole() != MemberRole.FUNCIONARIO) {
-						throw new BusinessException(
-								"Apenas membros com atribuição 'funcionário' podem ser alocados em projetos. " +
-										"O membro '" + member.getName() + "' possui atribuição: " + member.getRole().getDisplayName()
-						);
-				}
-
-				long activeProjectCount = projectRepository.countActiveProjectsByMemberId(
-						memberId, EXCLUDED_FROM_MEMBER_LIMIT
-				);
-
-				if (activeProjectCount >= MAX_ACTIVE_PROJECTS_PER_MEMBER) {
-						throw new BusinessException(
-								"Membro '" + member.getName() + "' já está alocado no máximo de " +
-										MAX_ACTIVE_PROJECTS_PER_MEMBER + " projetos ativos simultaneamente."
-						);
-				}
+				validateProjectAcceptsMembers(project);
+				validateMemberNotAlreadyInProject(project, memberId);
+				validateProjectMemberLimit(project);
+				validateMemberIsFuncionario(member);
+				validateMemberActiveProjectLimit(member, memberId);
 
 				project.getMemberIds().add(memberId);
 				project = projectRepository.save(project);
@@ -192,14 +163,13 @@ public class ProjectServiceImpl implements ProjectService {
 				Project project = findProjectOrThrow(projectId);
 
 				if (!project.getMemberIds().contains(memberId)) {
-						throw new BusinessException("Membro com ID " + memberId + " não está alocado neste projeto.");
+						throw new BusinessException(String.format("Membro com ID %s não está alocado neste projeto.", memberId));
 				}
 
 				if (project.getMemberIds().size() <= MIN_MEMBERS_PER_PROJECT) {
 						throw new BusinessException(
-								"Não é possível remover o membro. O projeto deve ter no mínimo " +
-										MIN_MEMBERS_PER_PROJECT + " membro(s) alocado(s)."
-						);
+								String.format("Não é possível remover o membro. O projeto deve ter no mínimo %s membro(s) alocado(s).",
+										MIN_MEMBERS_PER_PROJECT));
 				}
 
 				project.getMemberIds().remove(memberId);
@@ -241,16 +211,38 @@ public class ProjectServiceImpl implements ProjectService {
 						.build();
 		}
 
+		private String toLikePattern(String value) {
+				return (value != null && !value.isBlank()) ? "%" + value + "%" : null;
+		}
+
 		private Project findProjectOrThrow(Long id) {
 				return projectRepository.findById(id)
 						.orElseThrow(() -> new ResourceNotFoundException("Projeto", id));
 		}
 
-		private void validateManagerExists(Long managerId) {
-				memberApiClient.findMemberById(managerId)
+		private ProjectResponse buildProjectResponse(Project project) {
+				ProjectResponse response = projectMapper.toResponse(project);
+
+				memberApiClient.findMemberById(project.getManagerId())
+						.ifPresent(m -> response.setManagerName(m.getName()));
+
+				return response;
+		}
+
+		private MemberResponse findMemberOrThrow(Long memberId) {
+				return memberApiClient.findMemberById(memberId)
 						.orElseThrow(() -> new ResourceNotFoundException(
-								"Gerente (membro) com ID " + managerId + " não encontrado."
-						));
+								String.format("Membro %s não encontrado.", memberId)));
+		}
+
+		private void validateManagerExists(Long managerId) {
+				MemberResponse manager = memberApiClient.findMemberById(managerId)
+						.orElseThrow(
+								() -> new ResourceNotFoundException(String.format("Gerente (membro) com ID %s não encontrado.", managerId)));
+
+				if (!manager.getRole().equals(MemberRole.GERENTE)) {
+						throw new InvalidRequestException(String.format("Membro com ID %s não é um gerente", managerId));
+				}
 		}
 
 		private void validateDates(java.time.LocalDate startDate, java.time.LocalDate expectedEndDate) {
@@ -261,12 +253,43 @@ public class ProjectServiceImpl implements ProjectService {
 				}
 		}
 
-		private ProjectResponse buildProjectResponse(Project project) {
-				ProjectResponse response = projectMapper.toResponse(project);
+		private void validateProjectAcceptsMembers(Project project) {
+				if (INACTIVE_STATUSES.contains(project.getStatus())) {
+						throw new BusinessException(String.format(
+								"Não é possível alocar membros em projetos com o status '%s'",
+								project.getStatus().getDisplayName()));
+				}
+		}
 
-				memberApiClient.findMemberById(project.getManagerId())
-						.ifPresent(m -> response.setManagerName(m.getName()));
+		private void validateMemberNotAlreadyInProject(Project project, Long memberId) {
+				if (project.getMemberIds().contains(memberId)) {
+						throw new BusinessException(
+								String.format("Membro com ID %s já está alocado neste projeto", memberId));
+				}
+		}
 
-				return response;
+		private void validateProjectMemberLimit(Project project) {
+				if (project.getMemberIds().size() >= MAX_MEMBERS_PER_PROJECT) {
+						throw new BusinessException(
+								String.format("Projeto já atingiu o limite máximo de %s membros", MAX_MEMBERS_PER_PROJECT));
+				}
+		}
+
+		private void validateMemberIsFuncionario(MemberResponse member) {
+				if (member.getRole() != MemberRole.FUNCIONARIO) {
+						throw new BusinessException(String.format(
+								"Apenas membros com atribuição 'funcionário' podem ser alocados. " +
+										"O membro '%s' possui atribuição: %s",
+								member.getName(), member.getRole().getDisplayName()));
+				}
+		}
+
+		private void validateMemberActiveProjectLimit(MemberResponse member, Long memberId) {
+				long activeProjects = projectRepository.countActiveProjectsByMemberId(memberId, INACTIVE_STATUSES);
+				if (activeProjects >= MAX_ACTIVE_PROJECTS_PER_MEMBER) {
+						throw new BusinessException(String.format(
+								"Membro '%s' já está alocado no máximo de %s projetos ativos simultaneamente.",
+								member.getName(), MAX_ACTIVE_PROJECTS_PER_MEMBER));
+				}
 		}
 }

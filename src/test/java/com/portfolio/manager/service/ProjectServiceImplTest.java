@@ -39,8 +39,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -288,7 +290,7 @@ class ProjectServiceImplTest {
 
 						when(projectRepository.findById(1L)).thenReturn(Optional.of(baseProject));
 						when(memberApiClient.findMemberById(2L)).thenReturn(Optional.of(funcionario));
-						when(projectRepository.countActiveProjectsByMemberId(eq(2L), anyList())).thenReturn(0L);
+						when(projectRepository.countActiveProjectsByMemberId(eq(2L), anySet())).thenReturn(0L);
 						when(projectRepository.save(baseProject)).thenReturn(baseProject);
 						when(projectMapper.toResponse(baseProject)).thenReturn(expectedResponse);
 						when(memberApiClient.findMemberById(baseProject.getManagerId())).thenReturn(Optional.of(gerente));
@@ -315,10 +317,13 @@ class ProjectServiceImplTest {
 				void shouldThrowWhenMemberAlreadyInProject() {
 						baseProject.getMemberIds().add(2L);
 						when(projectRepository.findById(1L)).thenReturn(Optional.of(baseProject));
+						when(memberApiClient.findMemberById(2L)).thenReturn(Optional.of(funcionario));
 
 						assertThatThrownBy(() -> projectService.addMemberToProject(1L, 2L))
 								.isInstanceOf(BusinessException.class)
 								.hasMessageContaining("já está alocado");
+
+						verify(projectRepository, never()).save(any());
 				}
 
 				@Test
@@ -326,10 +331,15 @@ class ProjectServiceImplTest {
 				void shouldThrowWhenProjectAtMaxMembers() {
 						for (long i = 1; i <= 10; i++) baseProject.getMemberIds().add(i);
 						when(projectRepository.findById(1L)).thenReturn(Optional.of(baseProject));
+						when(memberApiClient.findMemberById(99L)).thenReturn(Optional.of(
+								MemberResponse.builder().id(99L).name("Novo").role(MemberRole.FUNCIONARIO).build()
+						));
 
 						assertThatThrownBy(() -> projectService.addMemberToProject(1L, 99L))
 								.isInstanceOf(BusinessException.class)
 								.hasMessageContaining("limite máximo");
+
+						verify(projectRepository, never()).save(any());
 				}
 
 				@Test
@@ -337,7 +347,7 @@ class ProjectServiceImplTest {
 				void shouldThrowWhenMemberAtMaxActiveProjects() {
 						when(projectRepository.findById(1L)).thenReturn(Optional.of(baseProject));
 						when(memberApiClient.findMemberById(2L)).thenReturn(Optional.of(funcionario));
-						when(projectRepository.countActiveProjectsByMemberId(eq(2L), anyList())).thenReturn(3L);
+						when(projectRepository.countActiveProjectsByMemberId(eq(2L), anySet())).thenReturn(3L);
 
 						assertThatThrownBy(() -> projectService.addMemberToProject(1L, 2L))
 								.isInstanceOf(BusinessException.class)

@@ -64,6 +64,11 @@ public class GlobalExceptionHandler {
 				return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Erro interno do servidor", request);
 		}
 
+		@ExceptionHandler(InvalidRequestException.class)
+		public ResponseEntity<ErrorResponse> handleInvalidRequest(InvalidRequestException ex, WebRequest request) {
+				return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage(), request); // ← 400
+		}
+
 		private ResponseEntity<ErrorResponse> buildResponse(HttpStatus status, String message, WebRequest request) {
 				ErrorResponse response = ErrorResponse.builder()
 						.timestamp(LocalDateTime.now())

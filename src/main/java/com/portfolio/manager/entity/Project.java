@@ -43,7 +43,7 @@ public class Project {
 		@Column(nullable = false, length = 200)
 		private String name;
 
-		@Column(name = "data_de_início", nullable = false)
+		@Column(name = "data_de_inicio", nullable = false)
 		private LocalDate startDate;
 
 		@Column(name = "data_final_esperada", nullable = false)
@@ -52,7 +52,7 @@ public class Project {
 		@Column(name = "data_final_real")
 		private LocalDate actualEndDate;
 
-		@Column(name = "orçamento_total", nullable = false, precision = 15, scale = 2)
+		@Column(name = "orcamento_total", nullable = false, precision = 15, scale = 2)
 		private BigDecimal totalBudget;
 
 		@Column(columnDefinition = "TEXT")
