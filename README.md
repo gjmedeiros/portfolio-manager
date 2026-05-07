@@ -83,25 +83,25 @@ Acesse o Swagger UI após iniciar a aplicação:
 
 ### Projetos
 
-| Método | Endpoint                              | Descrição                      | Role mínima |
-| ------ | ------------------------------------- | ------------------------------ | ----------- |
-| POST   | `/api/v1/projects`                    | Criar projeto                  | MANAGER     |
-| GET    | `/api/v1/projects`                    | Listar com filtros e paginação | VIEWER      |
-| GET    | `/api/v1/projects/{id}`               | Buscar por ID                  | VIEWER      |
-| PUT    | `/api/v1/projects/{id}`               | Atualizar dados                | MANAGER     |
-| PATCH  | `/api/v1/projects/{id}/status`        | Atualizar status               | MANAGER     |
-| DELETE | `/api/v1/projects/{id}`               | Excluir projeto                | ADMIN       |
-| POST   | `/api/v1/projects/{id}/members/{mid}` | Adicionar membro               | MANAGER     |
-| DELETE | `/api/v1/projects/{id}/members/{mid}` | Remover membro                 | ADMIN       |
-| GET    | `/api/v1/projects/report/portfolio`   | Relatório do portfólio         | VIEWER      |
+| Método | Endpoint                              | Descrição                      |
+| ------ | ------------------------------------- | ------------------------------ |
+| POST   | `/api/v1/projects`                    | Criar projeto                  |
+| GET    | `/api/v1/projects`                    | Listar com filtros e paginação |
+| GET    | `/api/v1/projects/{id}`               | Buscar por ID                  |
+| PUT    | `/api/v1/projects/{id}`               | Atualizar dados                |
+| PATCH  | `/api/v1/projects/{id}/status`        | Atualizar status               |
+| DELETE | `/api/v1/projects/{id}`               | Excluir projeto                |
+| POST   | `/api/v1/projects/{id}/members/{mid}` | Adicionar membro               |
+| DELETE | `/api/v1/projects/{id}/members/{mid}` | Remover membro                 |
+| GET    | `/api/v1/projects/report/portfolio`   | Relatório do portfólio         |
 
 ### Membros (via API externa mockada)
 
-| Método | Endpoint               | Descrição     | Role mínima |
-| ------ | ---------------------- | ------------- | ----------- |
-| POST   | `/api/v1/members`      | Criar membro  | MANAGER     |
-| GET    | `/api/v1/members`      | Listar todos  | VIEWER      |
-| GET    | `/api/v1/members/{id}` | Buscar por ID | VIEWER      |
+| Método | Endpoint               | Descrição     |
+| ------ | ---------------------- | ------------- |
+| POST   | `/api/v1/members`      | Criar membro  |
+| GET    | `/api/v1/members`      | Listar todos  |
+| GET    | `/api/v1/members/{id}` | Buscar por ID |
 
 ---
 
@@ -137,20 +137,6 @@ em análise → análise realizada → análise aprovada → iniciado → planej
 - Apenas membros com atribuição `FUNCIONARIO` podem ser alocados em projetos
 - Cada projeto: **mínimo 1** e **máximo 10** membros
 - Cada membro: no máximo **3 projetos ativos** simultaneamente (excluindo encerrado/cancelado)
-
----
-
-## 🧪 Testes
-
-```bash
-# Rodar todos os testes
-mvn test
-
-# Gerar relatório de cobertura JaCoCo
-mvn test jacoco:report
-
-# Relatório em: target/site/jacoco/index.html
-```
 
 ---
 
